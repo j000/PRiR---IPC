@@ -4,7 +4,7 @@
 #include <fcntl.h>
 #include <sys/ipc.h>
 
-const int BLOCK_SIZE = 4000000;
+const int BLOCK_SIZE = 40'000'000;
 
 const key_t key = ftok(__FILE__, 42);
 

@@ -2,50 +2,80 @@
 #include "common2.hpp"
 #include <csignal>
 #include <iostream>
+#include <string>
+#include <sys/wait.h>
 #include <unistd.h>
 
 volatile sig_atomic_t flag = 1;
 void my_function(int)
 {
+	std::cout << "signal" << std::endl;
 	flag = 0;
 }
 
-auto main() -> int
+auto main(int argc, char** argv) -> int
 {
-	signal(SIGINT, my_function);
+	const unsigned threads{argv[1] == nullptr ? 1 : std::stoul(argv[1])};
+	auto pids = std::vector<pid_t>(threads);
 
-	std::cout << "Key 1: 0x" << std::hex << key << std::endl;
+	std::cout << "Key 1: 0x" << std::hex << key << std::dec << std::endl;
 
-	SharedMemory sm{key};
-	float* ptr = sm.attach();
+	for (unsigned thread = threads; thread > 0; --thread) {
+		pid_t tmp = fork();
+		if (tmp == 0) {
+			std::cout << "FORKED! " << getpid() << std::endl;
 
-	MessageQueue mq{key};
-	struct info_msgbuf im {
-	};
+			signal(SIGINT, my_function);
 
-	int offset = 0;
-	int size = BLOCK_SIZE;
+			SharedMemory sm{key};
+			float* ptr = sm.attach();
 
-	im.mtype = getpid(); // typ wiadomosci = PID generatora
-	im.info.pid = getpid(); // tu powielamy PID generatora
-	im.info.offset = offset; // poczatek obszaru z danymi do przetworzenia
-	im.info.size = size; // rozmiar obszaru gotowego do przetworzenia
+			MessageQueue mq{key};
+			struct info_msgbuf im {
+			};
 
-	Random rand{};
+			const int size = BLOCK_SIZE / threads;
+			const int offset = (thread - 1) * size;
 
-	float counter = 0.0;
-	while (flag) {
-		std::cout << "Wypelniam pamiec (counter = " << counter << ")" << std::endl;
-		for (int i = 0; i < size; i++) {
-			ptr[offset + i] = counter + rand.get();
+			im.mtype = thread;
+			im.info.pid = getpid(); // tu powielamy PID generatora
+			im.info.offset
+				= offset; // poczatek obszaru z danymi do przetworzenia
+			im.info.size = size; // rozmiar obszaru gotowego do przetworzenia
+
+			Random rand{};
+
+			float counter = 0.0;
+			while (flag) {
+				std::cout << thread
+						  << ": Wypelniam pamiec (counter = " << counter << ")"
+						  << std::endl;
+				for (int i = 0; i < size; i++) {
+					ptr[offset + i] = counter + rand.get();
+				}
+				std::cout << thread << ": Wysylam wiadomosc" << std::endl;
+				mq.send(&im);
+				if (!flag)
+					continue;
+				std::cout << thread << ": Ide spac" << std::endl;
+				counter += 0.1f;
+				struct info_msgbuf tmp {
+				};
+				mq.receive(&tmp, im.info.pid);
+			}
+			std::cout << thread << ": done" << std::endl;
+			return 0;
+		} else {
+			std::cout << "pids: " << tmp << std::endl;
+			pids[thread] = tmp;
 		}
-		std::cout << "Wysylam wiadomosc" << std::endl;
-		mq.send(&im);
-		if (!flag)
-			continue;
-		std::cout << "Ide spac" << std::endl;
-		counter += 0.1f;
-		mq.receive(&im, getpid());
 	}
-	std::cout << std::endl;
+	signal(SIGINT, SIG_IGN); // ignore ctrl+c
+
+	usleep(100 * 1000);
+
+	for (const auto& thread : pids) {
+		std::cout << "waiting for " << thread << std::endl;
+		waitpid(thread, nullptr, 0);
+	}
 }

@@ -51,23 +51,24 @@ public:
 	}
 	auto receive(struct info_msgbuf* const buf, const int type = 1) -> void
 	{
-		if (msgrcv(m_msgid, buf, m_msgsz, type, 0) == -1) {
+		if (msgrcv(m_msgid, buf, m_msgsz, type, MSG_NOERROR) == -1) {
 			// if (errno == EIDRM) {
 			// 	create();
 			// 	return receive(buf);
 			// }
-			std::cout << "Message queue receive failed" << std::endl;
+			// std::cout << "Message queue receive failed" << std::endl;
+			throw std::runtime_error("Message queue receive failed");
 		}
 	}
-	auto send(struct info_msgbuf* const buf, const int type = 1) -> void
+	auto send(struct info_msgbuf* const buf) -> void
 	{
-		buf->mtype = type;
 		if (msgsnd(m_msgid, buf, m_msgsz, 0) == -1) {
 			// if (errno == EIDRM) {
 			// 	create();
 			// 	return send(buf);
 			// }
-			std::cout << "Message queue send failed" << std::endl;
+			// std::cout << "Message queue send failed" << std::endl;
+			throw std::runtime_error("Message queue send failed");
 		}
 	}
 
