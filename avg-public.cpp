@@ -26,24 +26,24 @@ auto main() -> int
 	};
 
 	while (flag) {
-		std::cout << "Odbieramy" << std::endl;
+		// std::cout << "Odbieramy" << std::endl;
 		mq.receive(&im, -100);
 
 		if (!flag)
 			continue;
 
-		std::cout << "Odebrane: PID : " << im.info.pid // PID nadawcy
-				  << "       OFFSET : " << im.info.offset
-				  << "         SIZE : " << im.info.size << std::endl;
+		// std::cout << "Odebrane: PID: " << im.info.pid
+		// 		  << "       OFFSET: " << im.info.offset
+		// 		  << "         SIZE: " << im.info.size << std::endl;
 
-		std::cout << "Licze srednia: ";
+		std::cout << "Liczę srednią: ";
 		float s = 0.0;
-		for (int i = 0; i < im.info.size; i++) {
+		for (int i = 0; i < im.info.size; ++i) {
 			s += ptr[im.info.offset + i];
 		}
 		std::cout << (s / im.info.size) << std::endl;
 
-		std::cout << "Powiadamiam generator " << im.info.pid << std::endl;
+		// std::cout << "Powiadamiam generator " << im.info.pid << std::endl;
 		im.mtype = im.info.pid;
 		mq.send(&im);
 	}

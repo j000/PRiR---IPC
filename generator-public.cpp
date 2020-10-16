@@ -9,13 +9,12 @@
 volatile sig_atomic_t flag = 1;
 void my_function(int)
 {
-	std::cout << "signal" << std::endl;
 	flag = 0;
 }
 
 auto main(int argc, char** argv) -> int
 {
-	const unsigned threads{argv[1] == nullptr ? 1 : std::stoul(argv[1])};
+	const unsigned threads{argc == 1 ? 1 : std::stoul(argv[1])};
 	auto pids = std::vector<pid_t>(threads);
 
 	std::cout << "Key 1: 0x" << std::hex << key << std::dec << std::endl;
@@ -23,9 +22,14 @@ auto main(int argc, char** argv) -> int
 	for (unsigned thread = threads; thread > 0; --thread) {
 		pid_t tmp = fork();
 		if (tmp == 0) {
-			std::cout << "FORKED! " << getpid() << std::endl;
-
-			signal(SIGINT, my_function);
+			{
+				struct sigaction new_action {
+				};
+				new_action.sa_handler = my_function;
+				sigfillset(&new_action.sa_mask);
+				new_action.sa_flags = 0;
+				sigaction(SIGINT, &new_action, nullptr);
+			}
 
 			SharedMemory sm{key};
 			float* ptr = sm.attach();
@@ -38,10 +42,9 @@ auto main(int argc, char** argv) -> int
 			const int offset = (thread - 1) * size;
 
 			im.mtype = thread;
-			im.info.pid = getpid(); // tu powielamy PID generatora
-			im.info.offset
-				= offset; // poczatek obszaru z danymi do przetworzenia
-			im.info.size = size; // rozmiar obszaru gotowego do przetworzenia
+			im.info.pid = getpid();
+			im.info.offset = offset;
+			im.info.size = size;
 
 			Random rand{};
 
@@ -53,11 +56,9 @@ auto main(int argc, char** argv) -> int
 				for (int i = 0; i < size; i++) {
 					ptr[offset + i] = counter + rand.get();
 				}
-				std::cout << thread << ": Wysylam wiadomosc" << std::endl;
+				// std::cout << thread << ": Wysylam wiadomosc" << std::endl;
 				mq.send(&im);
-				if (!flag)
-					continue;
-				std::cout << thread << ": Ide spac" << std::endl;
+				// std::cout << thread << ": Ide spac" << std::endl;
 				counter += 0.1f;
 				struct info_msgbuf tmp {
 				};
@@ -66,16 +67,23 @@ auto main(int argc, char** argv) -> int
 			std::cout << thread << ": done" << std::endl;
 			return 0;
 		} else {
-			std::cout << "pids: " << tmp << std::endl;
 			pids[thread] = tmp;
 		}
 	}
-	signal(SIGINT, SIG_IGN); // ignore ctrl+c
+	// ignore ctrl+c
+	// signal(SIGINT, SIG_IGN);
+	{
+		struct sigaction new_action {
+		};
+		new_action.sa_handler = SIG_IGN;
+		sigfillset(&new_action.sa_mask);
+		new_action.sa_flags = 0;
+		sigaction(SIGINT, &new_action, nullptr);
+	}
 
 	usleep(100 * 1000);
 
 	for (const auto& thread : pids) {
-		std::cout << "waiting for " << thread << std::endl;
 		waitpid(thread, nullptr, 0);
 	}
 }

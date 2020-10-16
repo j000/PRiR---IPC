@@ -16,12 +16,12 @@ public:
 		if (m_shmid == -1)
 			throw std::runtime_error("Cannot create shared SharedMemoryory");
 	}
-	~SharedMemory() noexcept(false)
-	{
-		// if (shmctl(m_shmid, IPC_RMID, NULL) == -1)
-		// 	throw std::runtime_error("Shared memory deletion failed");
-		std::cerr << "ipcrm shm " << m_shmid << std::endl;
-	}
+	// ~SharedMemory() noexcept(false)
+	// {
+	// 	// if (shmctl(m_shmid, IPC_RMID, NULL) == -1)
+	// 	// 	throw std::runtime_error("Shared memory deletion failed");
+	// 	std::cerr << "ipcrm shm " << m_shmid << std::endl;
+	// }
 
 	float* attach()
 	{
@@ -42,13 +42,14 @@ public:
 	{
 		create();
 	}
-	~MessageQueue() noexcept(false)
-	{
-		/* TODO: this removes queue even when in use! */
-		// if (msgctl(m_msgid, IPC_RMID, NULL) == -1)
-		// 	throw std::runtime_error("Message queue deletion failed");
-		std::cerr << "ipcrm msg " << m_msgid << std::endl;
-	}
+	// ~MessageQueue() noexcept(false)
+	// {
+	// 	/* TODO: this removes queue even when in use! */
+	// 	// if (msgctl(m_msgid, IPC_RMID, NULL) == -1)
+	// 	// 	throw std::runtime_error("Message queue deletion failed");
+	// 	std::cerr << "ipcrm msg " << m_msgid << std::endl;
+	// }
+
 	auto receive(struct info_msgbuf* const buf, const int type = 1) -> void
 	{
 		if (msgrcv(m_msgid, buf, m_msgsz, type, MSG_NOERROR) == -1) {
@@ -57,9 +58,13 @@ public:
 			// 	return receive(buf);
 			// }
 			// std::cout << "Message queue receive failed" << std::endl;
+			if (errno == EINTR) {
+				return;
+			}
 			throw std::runtime_error("Message queue receive failed");
 		}
 	}
+
 	auto send(struct info_msgbuf* const buf) -> void
 	{
 		if (msgsnd(m_msgid, buf, m_msgsz, 0) == -1) {
