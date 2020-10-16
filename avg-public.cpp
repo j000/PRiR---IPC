@@ -1,56 +1,50 @@
 #include "common.h"
-#include <fcntl.h>
+#include "common2.hpp"
 #include <iostream>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/file.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <csignal>
 #include <unistd.h>
 
-using namespace std;
-
-int main(void)
+volatile sig_atomic_t flag = 1;
+void my_function(int)
 {
-	key_t key = ftok(COMMON_FILE_NAME, 'A');
-	cout << "Key 1 : " << key << endl;
+	flag = 0;
+}
 
-	int msgid = msgget(key, 0666 | IPC_CREAT); // kolejka komunikatow
-	size_t msgsz
-		= sizeof(struct info_struct); // rozmiar struktury do przesylania danych
-	struct info_msgbuf im;
+auto main() -> int
+{
+	signal(SIGINT, my_function);
 
-	int shmid = shmget(key, BLOCK_SIZE * sizeof(double), 0644 | IPC_CREAT);
-	double* ptr
-		= (double*)shmat(shmid, (void*)0, 0); // podlaczamy pamiec wspoldzielona
-	if (ptr == (double*)(-1)) {
-		cerr << "Blad" << endl;
-		return 1;
-	}
+	std::cout << "Key 1: 0x" << std::hex << key << std::endl;
 
-	while (1) {
-		cout << "Odbieramy" << endl;
-		msgrcv(
-			msgid, &im, msgsz, 0, 0); // odbieramy komunikaty od kazdego nadawcy
-		cout << "Odebrane: PID : " << im.info.pid // PID nadawcy
+	SharedMemory sm{key};
+	float* ptr = sm.attach();
+
+	MessageQueue mq{key};
+	struct info_msgbuf im{};
+
+	while (flag) {
+		std::cout << "Odbieramy" << std::endl;
+		mq.receive(&im);
+
+		if (!flag)
+			continue;
+
+		auto pid = im.info.pid;
+
+		std::cout << "Odebrane: PID : " << im.info.pid // PID nadawcy
 			 << "       OFFSET : " << im.info.offset
-			 << "         SIZE : " << im.info.size << endl;
+			 << "         SIZE : " << im.info.size << std::endl;
 
-		cout << "Licze srednia: " << flush;
+		std::cout << "Licze srednia: ";
 
-		double s = 0.0;
+		float s = 0.0;
 		for (int i = 0; i < im.info.size; i++) {
 			s += ptr[im.info.offset + i];
 		}
-		cout << (s / im.info.size) << endl;
+		std::cout << (s / im.info.size) << std::endl;
 
-		cout << "Wysylam sygnal USR1" << endl;
-		sleep(2); // to jest do usuniecia, po poprawie programu
-		kill(im.info.pid, SIGUSR1); // wysylamy sygnal do generatora
+		std::cout << "Powiadamiam generator " << pid << std::endl;
+		mq.send(&im, pid);
 	}
-	return 0;
+	std::cout << std::endl;
 }

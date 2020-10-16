@@ -1,73 +1,51 @@
 #include "common.h"
-#include <fcntl.h>
+#include "common2.hpp"
+#include <csignal>
 #include <iostream>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/file.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
-using namespace std;
-
-void signal_handler(int s)
+volatile sig_atomic_t flag = 1;
+void my_function(int)
 {
-	signal(SIGUSR1, signal_handler);
+	flag = 0;
 }
 
-int main(void)
+auto main() -> int
 {
-	key_t key = ftok(COMMON_FILE_NAME, 'A');
-	cout << "Key 1 : " << key << endl;
+	signal(SIGINT, my_function);
 
-	int shmid = shmget(
-		key,
-		BLOCK_SIZE * sizeof(double),
-		0644 | IPC_CREAT); // tworzymy blok pamieci wspoldzelonej
-	double* ptr = (double*)shmat(
-		shmid,
-		(void*)0,
-		0); // podlaczamy blok pamieci wspoldzielonej do naszego programu
-	if (ptr == (double*)(-1)) {
-		cerr << "Blad" << endl;
-		return 1;
-	}
+	std::cout << "Key 1: 0x" << std::hex << key << std::endl;
 
-	signal(SIGUSR1, signal_handler); // obsluga sygnalu USR1
+	SharedMemory sm{key};
+	float* ptr = sm.attach();
+
+	MessageQueue mq{key};
+	struct info_msgbuf im {
+	};
 
 	int offset = 0;
 	int size = BLOCK_SIZE;
 
-	struct info_msgbuf im;
-	size_t msgsz = sizeof(struct info_struct); // rozmiar komunikatu
-	int msgid
-		= msgget(key, 0666 | IPC_CREAT); // tu zakladamy kolejke komunikatow
 	im.mtype = getpid(); // typ wiadomosci = PID generatora
 	im.info.pid = getpid(); // tu powielamy PID generatora
 	im.info.offset = offset; // poczatek obszaru z danymi do przetworzenia
 	im.info.size = size; // rozmiar obszaru gotowego do przetworzenia
 
-	srand(offset);
+	Random rand{};
 
-	double counter = 0.0;
-	while (1) {
-		cout << "Wypelniam pamiec" << endl;
+	float counter = 0.0;
+	while (flag) {
+		std::cout << "Wypelniam pamiec (counter = " << counter << ")" << std::endl;
 		for (int i = 0; i < size; i++) {
-			ptr[offset + i]
-				= counter + 0.01 * (random() / (1.0 + (double)RAND_MAX) - 0.5);
+			ptr[offset + i] = counter + rand.get();
 		}
-		cout << "Wysylam wiadomosc" << endl;
-		msgsnd(msgid, &im, msgsz, 0); // wiadomosc -> kolejka komunikatow
-		cout << "Ide spac" << endl;
-		counter += 0.1;
-		sleep(10); // do usuniecia po poprawie programu - ta linijka bardzo
-				   // spowalnia dzialanie
-		// sleep jest przerywany przyjsciem sygnalu
+		std::cout << "Wysylam wiadomosc" << std::endl;
+		mq.send(&im);
+		if (!flag)
+			continue;
+		std::cout << "Ide spac" << std::endl;
+		counter += 0.1f;
+		mq.receive(&im, getpid());
 	}
-
-	return 0;
+	std::cout << std::endl;
 }
